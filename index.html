@@ -1,86 +1,55 @@
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
-#include <WiFiClientSecure.h>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MQTT Remote Control</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; transition: background 0.3s; }
+        .btn { padding: 20px 40px; font-size: 24px; cursor: pointer; border-radius: 10px; border: none; box-shadow: 0 4px #999; }
+        .btn:active { transform: translateY(4px); box-shadow: 0 2px #666; }
+        
+        /* 两种视觉状态 */
+        .status-off { background-color: #2c3e50; color: white; }
+        .status-on { background-color: #f1c40f; color: #333; }
+    </style>
+</head>
+<body class="status-off" id="body">
 
-// --- 用户配置 ---
-const char* ssid     = "iNet";
-const char* password = "goodlife";
+    <h2 id="info">Device is OFF</h2>
+    <button class="btn" onmousedown="sendMsg('1')" onmouseup="sendMsg('0')" ontouchstart="sendMsg('1')" ontouchend="sendMsg('0')">
+        按下开启 / 松开关闭
+    </button>
 
-// 与网页端保持一致的 MQTT 配置
-const char* mqtt_server   = "08e06f289404444fab8874648aed4d71.s1.eu.hivemq.cloud";
-const int   mqtt_port     = 8883; // 硬件端使用加密端口 8883
-const char* mqtt_user     = "michael";
-const char* mqtt_pass     = "12345678Aa";
-const char* target_topic  = "button/state"; // 必须与网页中的 TOPIC 一致
+    <script>
+        const host = "08e06f289404444fab8874648aed4d71.s1.eu.hivemq.cloud";
+        const port = 8884; // WebSocket 端口
+        const clientID = "web_client_" + Math.random().toString(16).substr(2, 8);
+        
+        const client = new Paho.MQTT.Client(host, port, clientID);
 
-const int outputPin = 16; // GPIO16 (NodeMCU 上的 D0)
+        client.connect({
+            useSSL: true,
+            userName: "michael",
+            password: "12345678Aa",
+            onSuccess: () => { console.log("Connected to HiveMQ"); }
+        });
 
-WiFiClientSecure espClient;
-PubSubClient client(espClient);
+        function sendMsg(val) {
+            const message = new Paho.MQTT.Message(val);
+            message.destinationName = "home/led/control";
+            client.send(message);
 
-void setup_wifi() {
-  Serial.print("\nConnecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi connected");
-}
-
-// 核心逻辑：处理从网页发来的消息
-void callback(char* topic, byte* payload, unsigned int length) {
-  // 将 payload 转为字符
-  char message = (char)payload[0]; 
-  
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] Value: ");
-  Serial.println(message);
-
-  if (message == '1') {
-    digitalWrite(outputPin, HIGH); // 网页端按下
-    Serial.println("GPIO16 -> HIGH");
-  } else if (message == '0') {
-    digitalWrite(outputPin, LOW);  // 网页端松开
-    Serial.println("GPIO16 -> LOW");
-  }
-}
-
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    String clientId = "ESP8266-Client-" + String(random(0xffff), HEX);
-    
-    if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
-      Serial.println("connected");
-      client.subscribe(target_topic); // 订阅网页发送的主题
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
-      delay(5000);
-    }
-  }
-}
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(outputPin, OUTPUT);
-  digitalWrite(outputPin, LOW); // 初始设为低电平
-
-  // 由于使用 HiveMQ 云端，需要忽略证书指纹校验（简单安全）
-  espClient.setInsecure(); 
-
-  setup_wifi();
-  client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(callback);
-}
-
-void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
-}
+            // 切换视觉效果
+            const body = document.getElementById('body');
+            const info = document.getElementById('info');
+            if(val === '1') {
+                body.className = 'status-on';
+                info.innerText = "Device is ON";
+            } else {
+                body.className = 'status-off';
+                info.innerText = "Device is OFF";
+            }
+        }
+    </script>
+</body>
+</html>
